@@ -544,3 +544,102 @@
   )
 )
 
+(define-public (supply-to-lending-pool (token principal) (amount uint))
+  (let
+    (
+      (pool (unwrap! (map-get? lending-pools { token: token }) ERR-POOL-NOT-FOUND))
+      (current-supply (default-to { amount: u0, earned-interest: u0, last-update-time: u0 } 
+                       (map-get? user-supplies { user: tx-sender, token: token })))
+    )
+    (asserts! (get is-active pool) ERR-PROTOCOL-PAUSED)
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    
+    ;; Update user supply
+    (map-set user-supplies
+      { user: tx-sender, token: token }
+      {
+        amount: (+ (get amount current-supply) amount),
+        earned-interest: (get earned-interest current-supply),
+        last-update-time: stacks-block-height
+      }
+    )
+    
+    ;; Update pool totals
+    (map-set lending-pools
+      { token: token }
+      (merge pool { total-supplied: (+ (get total-supplied pool) amount) })
+    )
+    
+    (ok amount)
+  )
+)
+
+(define-read-only (get-loan (loan-id uint))
+  (map-get? user-loans { loan-id: loan-id })
+)
+
+(define-read-only (get-lending-pool (token principal))
+  (map-get? lending-pools { token: token })
+)
+
+;; PRICE ORACLE SYSTEM
+(define-public (add-price-oracle 
+  (token principal) 
+  (initial-price uint) 
+  (decimals uint) 
+  (oracle-address principal)
+)
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (asserts! (is-token-whitelisted token) ERR-INVALID-TOKEN)
+    
+    (map-set price-oracles
+      { token: token }
+      {
+        price: initial-price,
+        decimals: decimals,
+        last-update-time: stacks-block-height,
+        oracle-address: oracle-address,
+        is-active: true
+      }
+    )
+    (ok token)
+  )
+)
+
+(define-public (update-token-price (token principal) (new-price uint))
+  (let
+    (
+      (oracle (unwrap! (map-get? price-oracles { token: token }) ERR-ORACLE-NOT-FOUND))
+    )
+    (asserts! (is-eq tx-sender (get oracle-address oracle)) ERR-NOT-AUTHORIZED)
+    (asserts! (get is-active oracle) ERR-ORACLE-NOT-FOUND)
+    
+    (map-set price-oracles
+      { token: token }
+      (merge oracle { 
+        price: new-price,
+        last-update-time: stacks-block-height
+      })
+    )
+    (ok new-price)
+  )
+)
+
+(define-read-only (get-token-price (token principal))
+  (default-to u100000000 ;; Default price if oracle not found
+    (get price (map-get? price-oracles { token: token })))
+)
+
+(define-read-only (is-price-fresh (token principal) (max-age uint))
+  (let
+    (
+      (oracle (map-get? price-oracles { token: token }))
+    )
+    (match oracle
+      oracle-data (< (- stacks-block-height (get last-update-time oracle-data)) max-age)
+      false
+    )
+  )
+)
+
