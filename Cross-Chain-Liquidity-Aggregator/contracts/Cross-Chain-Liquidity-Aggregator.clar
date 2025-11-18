@@ -422,3 +422,125 @@
     timestamp: uint
   }
 )
+
+(define-map governance-tokens
+  { user: principal }
+  {
+    balance: uint,
+    delegated-to: (optional principal),
+    voting-power: uint
+  }
+)
+
+;; INSURANCE SYSTEM
+(define-map insurance-policies
+  { policy-id: uint }
+  {
+    holder: principal,
+    coverage-amount: uint,
+    premium-paid: uint,
+    coverage-type: uint,
+    start-time: uint,
+    end-time: uint,
+    is-active: bool
+  }
+)
+
+(define-map insurance-claims
+  { claim-id: uint }
+  {
+    policy-id: uint,
+    claimant: principal,
+    claim-amount: uint,
+    claim-type: uint,
+    evidence-hash: (buff 32),
+    status: uint,
+    submitted-at: uint
+  }
+)
+
+;; NFT COLLATERAL SYSTEM
+(define-map nft-collateral
+  { nft-id: uint }
+  {
+    owner: principal,
+    collection-address: principal,
+    token-id: uint,
+    appraised-value: uint,
+    is-collateralized: bool,
+    loan-id: (optional uint)
+  }
+)
+
+(define-map nft-collections
+  { collection: principal }
+  {
+    floor-price: uint,
+    is-approved: bool,
+    collateral-factor: uint,
+    last-price-update: uint
+  }
+)
+
+;; CROSS-CHAIN BRIDGE SYSTEM
+(define-map bridge-transactions
+  { tx-id: uint }
+  {
+    sender: principal,
+    recipient: (buff 20),
+    token: principal,
+    amount: uint,
+    target-chain: uint,
+    status: uint,
+    created-at: uint,
+    completed-at: (optional uint)
+  }
+)
+(define-map supported-chains
+  { chain-id: uint }
+  {
+    name: (string-ascii 32),
+    is-active: bool,
+    bridge-fee-bps: uint,
+    confirmation-blocks: uint
+  }
+)
+
+;; NEW COUNTERS
+(define-data-var next-loan-id uint u1)
+(define-data-var next-farm-id uint u1)
+(define-data-var next-proposal-id uint u1)
+(define-data-var next-policy-id uint u1)
+(define-data-var next-claim-id uint u1)
+(define-data-var next-nft-id uint u1)
+(define-data-var next-bridge-tx-id uint u1)
+(define-data-var next-oracle-feed-id uint u1)
+
+;; LENDING & BORROWING SYSTEM
+(define-public (create-lending-pool 
+  (token principal) 
+  (collateral-factor uint) 
+  (liquidation-threshold uint)
+)
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (asserts! (is-token-whitelisted token) ERR-INVALID-TOKEN)
+    (asserts! (<= collateral-factor u8000) ERR-INVALID-AMOUNT) ;; Max 80% collateral factor
+    (asserts! (<= liquidation-threshold u9000) ERR-INVALID-AMOUNT) ;; Max 90% liquidation threshold
+    
+    (map-set lending-pools
+      { token: token }
+      {
+        total-supplied: u0,
+        total-borrowed: u0,
+        supply-rate: u500, ;; 5% default
+        borrow-rate: u800, ;; 8% default
+        collateral-factor: collateral-factor,
+        liquidation-threshold: liquidation-threshold,
+        is-active: true
+      }
+    )
+    (ok token)
+  )
+)
+
