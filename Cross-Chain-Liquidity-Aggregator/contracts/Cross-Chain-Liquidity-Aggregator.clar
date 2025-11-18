@@ -67,3 +67,111 @@
     rewards-token: (optional principal)
   }
 )
+
+(define-map route-configuration
+  { route-id: uint }
+  {
+    name: (string-ascii 32),
+    path: (list 10 uint),
+    is-optimized: bool
+  }
+)
+
+(define-map user-referrals
+  { user: principal }
+  { referrer: principal, fees-earned: uint }
+)
+
+(define-map token-whitelist
+  { token: principal }
+  { is-whitelisted: bool, decimals: uint }
+)
+
+;; Counters
+(define-data-var next-pool-id uint u1)
+(define-data-var next-strategy-id uint u1)
+(define-data-var next-route-id uint u1)
+
+;; Protocol status functions
+(define-read-only (get-protocol-status)
+  {
+    paused: (var-get protocol-paused),
+    fee-bps: (var-get protocol-fee-bps),
+    treasury: (var-get treasury-address),
+    referral-fee-bps: (var-get referral-fee-bps),
+    fees-accumulated: (var-get protocol-fees-accumulated)
+  }
+)
+
+(define-public (set-protocol-paused (paused bool))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (ok (var-set protocol-paused paused))
+  )
+)
+
+(define-public (set-protocol-fee (fee-bps uint))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (asserts! (<= fee-bps u1000) ERR-INVALID-FEE-BPS) ;; Max 10% fee
+    (ok (var-set protocol-fee-bps fee-bps))
+  )
+)
+
+(define-public (set-referral-fee (fee-bps uint))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (asserts! (<= fee-bps u500) ERR-INVALID-FEE-BPS) ;; Max 5% referral fee
+    (ok (var-set referral-fee-bps fee-bps))
+  )
+)
+
+(define-public (set-treasury-address (new-address principal))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (ok (var-set treasury-address new-address))
+  )
+)
+
+;; Token whitelist management
+(define-public (whitelist-token (token principal) (decimals uint))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (ok (map-set token-whitelist { token: token } { is-whitelisted: true, decimals: decimals }))
+  )
+)
+
+(define-public (remove-token-from-whitelist (token principal))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (ok (map-set token-whitelist { token: token } { is-whitelisted: false, decimals: u0 }))
+  )
+)
+
+(define-read-only (is-token-whitelisted (token principal))
+  (default-to false (get is-whitelisted (map-get? token-whitelist { token: token })))
+)
+
+;; Pool management functions
+(define-read-only (get-pool (pool-id uint))
+  (map-get? liquidity-pools { pool-id: pool-id })
+)
+
+(define-read-only (get-pool-count)
+  (- (var-get next-pool-id) u1)
+)
+
+(define-public (set-pool-active-status (pool-id uint) (is-active bool))
+  (let
+    (
+      (pool (unwrap! (map-get? liquidity-pools { pool-id: pool-id }) ERR-POOL-NOT-FOUND))
+    )
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    
+    (map-set liquidity-pools
+      { pool-id: pool-id }
+      (merge pool { is-active: is-active })
+    )
+    (ok is-active)
+  )
+)
