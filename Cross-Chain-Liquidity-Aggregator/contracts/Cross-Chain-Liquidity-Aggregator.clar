@@ -266,3 +266,27 @@
     (ok new-apy-estimate)
   )
 )
+
+(define-public (set-yield-strategy-active (strategy-id uint) (is-active bool))
+  (let
+    (
+      (strategy (unwrap! (map-get? yield-strategies { strategy-id: strategy-id }) ERR-YIELD-STRATEGY-NOT-FOUND))
+    )
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    
+    (map-set yield-strategies
+      { strategy-id: strategy-id }
+      (merge strategy { is-active: is-active })
+    )
+    (ok is-active)
+  )
+)
+
+;; User position and analytics functions
+(define-read-only (get-user-liquidity-position (user principal) (pool-id uint))
+  (map-get? pool-providers { pool-id: pool-id, provider: user })
+)
+
+(define-read-only (get-user-deposit (user principal) (token principal))
+  (map-get? user-deposits { user: user, token: token })
+)
